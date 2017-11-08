@@ -1,0 +1,110 @@
+---
+title: "Text Mining Drones"
+author: "Paul Oldham"
+date: "07/11/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+We start by importing the data we need either from a .csv file or in this case from the texts we downloaded in a zip file. The readtext package makes this very very easy. 
+
+You will need to identify the file path for the file on your computer and replace it inside brackets. 
+
+```{r}
+library(readtext)
+drones <- readtext("/Users/pauloldham17inch/Desktop/WIPO_Training/derwent_innovations/drones_wipo_1339_fulltext.zip")
+```
+
+We could also do with making sure the terms are lowercase for the purpose of counting. 
+
+```{r}
+drones$text <- tolower(drones$text)
+```
+
+Now we can use a tidytext approach
+
+```{r}
+library(tidyverse)
+library(tidytext)
+drones_bigram <- drones %>% unnest_tokens(text, text, token = "ngrams", n = 2)
+```
+
+Let's take a look 
+
+```{r}
+View(drones_bigram)
+```
+
+Let's see what comes to the top
+
+```{r}
+drones_bigram %>% count(text, sort = TRUE)
+```
+
+To get to more meaningful bigrams we need to remove the stopwords
+
+```{r}
+bigrams_separated <- drones_bigram %>% separate(text, c("word1", "word2"), sep = " ")
+```
+
+```{r}
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+# new bigram counts:
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+
+bigram_counts
+```
+
+We then need to join them back together again
+
+```{r}
+bigrams_united <- bigrams_filtered %>%
+  unite(bigram, word1, word2, sep = " ")
+
+bigrams_united %>% count(bigram, sort = TRUE) %>% View()
+```
+
+Let's try the same thing with trigrams
+
+```{r}
+drones_trigram <- drones %>% unnest_tokens(text, text, token = "ngrams", n = 3)
+```
+
+We now apply the same approach to stopwords to try and clean this up a bit. 
+
+```{r}
+trigrams_separated <- drones_trigram %>% separate(text, c("word1", "word2", "word3"), sep = " ")
+
+trigrams_filtered <- trigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word) %>% 
+  filter(!word3 %in% stop_words$word)
+
+trigrams_united <- trigrams_filtered %>%
+  unite(trigram, word1, word2, word3, sep = " ")
+
+trigrams_united %>% count(trigram, sort = TRUE) %>% View()
+```
+
+
+
+
+We could always break that down into words
+
+```{r}
+
+```
+
+From a .csv file
+
+```{r}
+library(tidyverse)
+unite(indonesia_text, text, c(title_original, abstract_original, claims), sep = " ") 
+```
