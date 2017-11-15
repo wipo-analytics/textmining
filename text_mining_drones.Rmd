@@ -9,14 +9,56 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-We start by importing the data we need either from a .csv file or in this case from the texts we downloaded in a zip file. The readtext package makes this very very easy. 
+This brief article applies the Tidy Text Mining approach to text mining in R developed by Julia Silge and David Robinson in their book [Text Mining in R](Julia Silge and David Robinson) to patent data. 
 
-You will need to identify the file path for the file on your computer and replace it inside brackets. 
+We will be using a sample of data on drone related patent activity (including noise) downloaded from the commercial Derwent Innovations database including the title, abstract, description and claims. The data is a sample of 1354 publications under the Patent Cooperation Treaty (WO) containing the term drone or drones in the titles, abstracts or claims until October 2017 and can be downloaded as a zip file [here]().  
+
+We start by installing the R packages we will be needing:
+
+```{r install, eval=FALSE}
+install.packages(tidyverse)
+install.packages(tidytext)
+install.packages(readtext)
+```
+
+Next, we load the libraries:
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(readtext)
+```
+
+
+We then import the patent data we need either from a .csv file or in this case from the individual texts we downloaded in a zip file. The `readtext` package by [Kenneth Benoit](https://github.com/kbenoit/readtext) makes it really really easy to import files in one go directly from a zip file. 
+
+You will need to identify the file path for the file on your computer and place it inside brackets. 
+
+For Windows users to identify the file path identify the file, then right click for Properties. Then copy the location such as `C:\Users\POMC\Desktop`. You then need to copy the file name and add it to the path e.g. `C:\Users\POMC\Desktop\myfile.zip`. R will not be able to read the back slashes and will throw an error. So replace the back slashes with forward slashes manually to produce the following:
+
+`C:/Users/POMC/Desktop/myfile.zip`
+
+Or, press the green arrow at the end of this chunk to load a windows path function and paste in the path inside quotes. This function simply converts the forward slashes to back slashes.
+
+```{r path_function}
+windows_path <- function(path){
+  path <- stringr::str_replace_all(path, "\\\\", "/")
+  path
+  }
+```
+
+```{r exampl_path, cache=TRUE}
+windows_path("C:/Users/POMC/Desktop/myfile.zip")
+```
+
+We then use readtext to import the files to an object we call drones.
 
 ```{r}
 library(readtext)
-drones <- readtext("/Users/pauloldham17inch/Desktop/WIPO_Training/derwent_innovations/drones_wipo_1339_fulltext.zip")
+drones <- readtext("/Users/pauloldham17inch/Desktop/WIPO_Training/derwent_innovations/drones_wipo_fulltext_english_1354.zip")
 ```
+
+When we inspect this data frame we will see a doc_id field and a text field. The doc id field is the patent publication number including the date. The text field `text` contains the full text of the patent document including the derwent source. We probably want to do some initial editing here to the file name ()
 
 We could also do with making sure the terms are lowercase for the purpose of counting. 
 
@@ -24,7 +66,7 @@ We could also do with making sure the terms are lowercase for the purpose of cou
 drones$text <- tolower(drones$text)
 ```
 
-Now we can use a tidytext approach
+Now we can use a tidytext approach to identifying ngrams (phrases) as outlined in [Chapter 4 of Text Mining in R](http://tidytextmining.com/ngrams.html). We will simply use the code provided in the examples from that chapter and then look at how we might adapt for our needs with patent data later on.
 
 ```{r}
 library(tidyverse)
@@ -41,19 +83,58 @@ View(drones_bigram)
 Let's see what comes to the top
 
 ```{r}
-drones_bigram %>% count(text, sort = TRUE)
+drones_bigram %>%
+  count(text, sort = TRUE) %>%
+  View()
 ```
 
-To get to more meaningful bigrams we need to remove the stopwords
+To get to more meaningful bigrams we need to remove the stopwords as described in Text Mining in R. The stop_words table contains 1149 common english words from three different sources.
+
+```{r}
+View(stop_words)
+```
+
+To see the different categories we can use count. 
+
+```{r}
+stop_words %>% count(lexicon)
+```
+
+
+
+We might want to add some terms to the stop_words list. For example we might want to add terms that show up prominently such as derwent (as the source of the data), `patent` and `export`. 
+
+To do that let's create a small data frame or tibble with the same column names as the tidy text stop_words table. In this case after a quick review we are excluding some top occurring terms and french terms. A fuller approach would use a more detailed list oif common french or german words for cases where we are only interested in english texts. 
+
+```{r}
+mystop <- tibble(word = c("derwent", "patent", "export", "figure", "de", "la", "claim", "fig", "dans", "par", "au", "moins", "export", "peut", "du", "par", "rapport", "à", "une", "dispositif" , "selon", "l'invention", "des", "moyens", "und", "oder", "manière", "en", "œuvre", "le", "dispositif", "système", "de", "sur", "le", "dans", "une"), lexicon = "mystop")
+```
+
+We now join the tables
+
+```{r}
+my_stop_words <- bind_rows(stop_words, mystop)
+```
+
+and we take a look to see if the terms have been added. 
+
+```{r}
+my_stop_words %>% count(lexicon)
+```
+
+We can of course add any number of stop words using this approach but caution is needed to test that stop words are not important in the particular area of interest. 
+
 
 ```{r}
 bigrams_separated <- drones_bigram %>% separate(text, c("word1", "word2"), sep = " ")
 ```
 
+Now we filter out the stop words. To to this following the Tidy Text mining code we use `filter()` and then specify that we want to only keep words that are *not* in the `my_stop_words$word` column by placing `!` in front of the `word1` and `word2`. This is a very neat and simple way of removing stop words.
+
 ```{r}
 bigrams_filtered <- bigrams_separated %>%
-  filter(!word1 %in% stop_words$word) %>%
-  filter(!word2 %in% stop_words$word)
+  filter(!word1 %in% my_stop_words$word) %>%
+  filter(!word2 %in% my_stop_words$word)
 
 # new bigram counts:
 bigram_counts <- bigrams_filtered %>% 
@@ -67,9 +148,24 @@ We then need to join them back together again
 ```{r}
 bigrams_united <- bigrams_filtered %>%
   unite(bigram, word1, word2, sep = " ")
-
-bigrams_united %>% count(bigram, sort = TRUE) %>% View()
 ```
+
+Let's take a look by counting up and ranking the bigrams.
+
+```{r}
+bigrams_united %>%
+  count(bigram, sort = TRUE)
+```
+
+For closer inspection lets use View()
+
+```{r}
+bigrams_united %>%
+  count(bigram, sort = TRUE) %>% 
+  View()
+```
+
+### Trigrams
 
 Let's try the same thing with trigrams
 
@@ -77,34 +173,19 @@ Let's try the same thing with trigrams
 drones_trigram <- drones %>% unnest_tokens(text, text, token = "ngrams", n = 3)
 ```
 
-We now apply the same approach to stopwords to try and clean this up a bit. 
+We now apply the same approach to trigrams as three word phrases. To make this a little easier we will combine the earlier code
 
 ```{r}
-trigrams_separated <- drones_trigram %>% separate(text, c("word1", "word2", "word3"), sep = " ")
-
-trigrams_filtered <- trigrams_separated %>%
-  filter(!word1 %in% stop_words$word) %>%
-  filter(!word2 %in% stop_words$word) %>% 
-  filter(!word3 %in% stop_words$word)
-
-trigrams_united <- trigrams_filtered %>%
+trigrams <- drones_trigram %>%
+  separate(text, c("word1", "word2", "word3"), sep = " ") %>%
+  filter(!word1 %in% my_stop_words$word) %>%
+  filter(!word2 %in% my_stop_words$word) %>% 
+  filter(!word3 %in% my_stop_words$word) %>%
   unite(trigram, word1, word2, word3, sep = " ")
-
-trigrams_united %>% count(trigram, sort = TRUE) %>% View()
 ```
 
 
-
-
-We could always break that down into words
-
 ```{r}
-
-```
-
-From a .csv file
-
-```{r}
-library(tidyverse)
-unite(indonesia_text, text, c(title_original, abstract_original, claims), sep = " ") 
+trigrams %>%
+  count(trigram, sort = TRUE) %>% View()
 ```
